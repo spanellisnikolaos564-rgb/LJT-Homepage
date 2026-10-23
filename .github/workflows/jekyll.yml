@@ -1,6 +1,6 @@
 name: Deploy Academic Pages template site to Pages
 
-"on":
+on:
   push:
     branches: ["master"]
   workflow_dispatch:
@@ -72,10 +72,12 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          msg="Pages setup diagnostic [skip ci]
-
-$(cat /tmp/pages-diagnostic.txt 2>/dev/null || echo no-diagnostic)"
-          git commit --allow-empty -m "$msg"
+          {
+            echo "Pages setup diagnostic [skip ci]"
+            echo
+            cat /tmp/pages-diagnostic.txt 2>/dev/null || echo no-diagnostic
+          } > /tmp/pages-commit-message
+          git commit --allow-empty -F /tmp/pages-commit-message
           git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git" HEAD:master
       - name: Enable GitHub Pages
         env:
