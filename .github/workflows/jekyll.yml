@@ -1,4 +1,3 @@
-# Workflow for building and deploying an Academic Pages / Jekyll site to GitHub Pages
 name: Deploy Academic Pages template site to Pages
 
 on:
@@ -7,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -27,6 +26,57 @@ jobs:
           ruby-version: '3.1'
           bundler-cache: true
           cache-version: 0
+      - name: Probe Pages API
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          url = "https://api.github.com/repos/" + os.environ["REPO"] + "/pages"
+          headers = {
+              "Authorization": "Bearer " + os.environ["GITHUB_TOKEN"],
+              "Accept": "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+          }
+
+          def request(method, payload=None):
+              data = None if payload is None else json.dumps(payload).encode()
+              req = urllib.request.Request(url, data=data, headers=headers, method=method)
+              try:
+                  with urllib.request.urlopen(req) as response:
+                      return response.status, response.read().decode()
+              except urllib.error.HTTPError as error:
+                  return error.code, error.read().decode()
+              except Exception as error:
+                  return 0, repr(error)
+
+          lines = []
+          status, body = request("GET")
+          lines.append("GET " + str(status) + " " + body[:700])
+          if status == 404:
+              status, body = request("POST", {"build_type": "workflow"})
+              lines.append("POST " + str(status) + " " + body[:700])
+          with open("/tmp/pages-diagnostic.txt", "w") as output:
+              output.write("\n".join(lines))
+          PY
+      - name: Record diagnostic
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          msg="Pages setup diagnostic [skip ci]
+
+$(cat /tmp/pages-diagnostic.txt 2>/dev/null || echo no-diagnostic)"
+          git commit --allow-empty -m "$msg"
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git" HEAD:master
       - name: Enable GitHub Pages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
